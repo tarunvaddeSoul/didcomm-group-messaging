@@ -347,6 +347,51 @@ which uses identical values.
 | GCK decryption fails (invalid tag) | Discard the message. Send problem report with code `e.m.group-messaging.decrypt-failed`. |
 | Member receives `remove-member` listing themselves | Discard the group state. Send `remove-member-ack`. |
 
+## Delivery Models
+
+This protocol supports three delivery models for `delivery` messages. Implementations
+MUST support at least the admin-relay model.
+
+### 1. Direct Fan-Out
+
+Each sender encrypts the delivery envelope once (O(1) with the GCK), then sends the
+same envelope to every other group member via their pairwise DIDComm v2 connections.
+This requires that all members maintain pairwise connections with all other members.
+
+**When to use**: Small groups where all members have established pairwise connections.
+
+### 2. Admin-Relay (Hub-and-Spoke)
+
+Non-admin members send `delivery` messages only to the admin via their pairwise
+connection. The admin, upon receiving a delivery, stores and processes the message,
+then forwards the same delivery envelope to all other members via the admin's
+pairwise connections.
+
+This model is required when using `did:peer:4` (or any pairwise DID method) because
+each pairwise connection uses a unique DID. Members may not be able to correlate
+group member DIDs with their own pairwise connections to other members, but they
+always have a pairwise connection to the admin who created the group.
+
+**Trade-offs**:
+- Admin is a single point of failure for delivery — if admin is offline,
+  non-admin members cannot send messages.
+- Latency doubles for non-admin-originated messages (member -> admin -> members).
+- Admin can observe all message timing (but cannot forge content due to
+  AAD-bound GCK encryption with the original sender's DID).
+
+**When to use**: Groups using pairwise DID methods, or when members lack full-mesh
+pairwise connections.
+
+### 3. Group Mediator Fan-Out
+
+A dedicated mediator service holds the group's fan-out routing table. The sender
+sends a single delivery envelope to the mediator, which distributes it to all
+members. See the `group_mediator_did` and `group_mediator_endpoint` fields in the
+`create` message for configuration.
+
+**When to use**: Large groups (>20 members) or when a persistent delivery
+infrastructure is available.
+
 ## Security
 
 ### Threat Model
